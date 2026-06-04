@@ -11,9 +11,10 @@ Usage:
     python generate.py 2026-05-25 2026-05-31 2025-05-19 2025-05-25 P5W4
 """
 import json
+import os
 import sys
 import urllib.request
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 SUPA = "https://jrzfczhsqshejnrxgmuq.supabase.co"
@@ -55,15 +56,19 @@ def fetch_all(path):
 
 
 def sales_for(start, end):
-    """Total revenue buckets for a date range, merging gotab sales + tripleseat events."""
+    """Total revenue buckets + per-day totals for a date range,
+    merging gotab sales + tripleseat events."""
     rows = fetch_all(
         f"sales?report_date=gte.{start}&report_date=lte.{end}"
         f"&select=report_date,category,product,net_sales"
     )
     buckets = {"food": 0.0, "bev": 0.0, "ent": 0.0, "other": 0.0}
+    daily = {}  # date -> total revenue across all buckets
     for r in rows:
         cat = r["category"]
         amt = float(r["net_sales"] or 0)
+        d = r["report_date"]
+        daily[d] = daily.get(d, 0.0) + amt
         if cat in FOOD_CATS:
             buckets["food"] += amt
         elif cat in BEV_CATS:
@@ -89,9 +94,10 @@ def sales_for(start, end):
         buckets["food"] += f
         buckets["bev"] += b
         buckets["ent"] += rest
+        daily[e["event_date"]] = daily.get(e["event_date"], 0.0) + (f + b + rest)
 
-    buckets["total"] = sum(buckets.values()) - buckets["total"] if "total" in buckets else \
-        buckets["food"] + buckets["bev"] + buckets["ent"] + buckets["other"]
+    buckets["total"] = buckets["food"] + buckets["bev"] + buckets["ent"] + buckets["other"]
+    buckets["daily"] = daily
     return buckets
 
 
@@ -109,7 +115,50 @@ def labor_for(start, end):
     return sums
 
 
-def compute(start, end):
+def attendance_for(start, end):
+    """Pull staff attendance issues for the window via the existing
+    AttendanceAgent core. Returns {late, no_show, called_off, sick, total, incidents}.
+
+    `total` is the scorecard cell value: late + no_show + called_off.
+    `incidents` is a short list of {date, name, kind, detail} dicts.
+    Returns zeros on failure (e.g. 7Shifts env missing) so the page still renders.
+    """
+    try:
+        # Lazy-import — only generate.py needs this; the deployed static page does not.
+        env_path = os.path.expanduser("~/7shifts/.env")
+        if os.path.exists(env_path):
+            for line in open(env_path):
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+        sys.path.insert(0, os.path.expanduser("~/Documents/AttendanceAgent/api"))
+        import tardiness_core as tc
+        rows, _punches, attendance, _name_cat = tc.build(start, end)
+        no_show    = sum(a.get("no_show", 0)    for a in attendance.values())
+        called_off = sum(a.get("called_off", 0) for a in attendance.values())
+        sick       = sum(a.get("sick", 0)       for a in attendance.values())
+        late       = len(rows)
+        incidents = []
+        for r in rows:
+            incidents.append({"date": r["date"], "name": r["name"], "kind": "Late",
+                              "detail": f'{r["late"]} min · sched {r["sched"]} / in {r["actual"]}'})
+        for name, a in attendance.items():
+            for _ in range(a.get("no_show", 0)):
+                incidents.append({"date": "—", "name": name, "kind": "No-show", "detail": ""})
+            for _ in range(a.get("called_off", 0)):
+                incidents.append({"date": "—", "name": name, "kind": "Called off", "detail": ""})
+        return {"late": late, "no_show": no_show, "called_off": called_off, "sick": sick,
+                "total": late + no_show + called_off, "incidents": incidents,
+                "ok": True}
+    except Exception as e:
+        print(f"  ! attendance lookup failed: {e}")
+        return {"late": 0, "no_show": 0, "called_off": 0, "sick": 0,
+                "total": 0, "incidents": [], "ok": False}
+
+
+def compute(start, end, with_attendance=False):
     s = sales_for(start, end)
     l = labor_for(start, end)
     total_sales = s["total"]
@@ -118,12 +167,13 @@ def compute(start, end):
     ent = s["ent"]
     other = s["other"]
     non_food = total_sales - food
-    return {
+    out = {
         "total_sales": total_sales,
         "food_sales": food,
         "bev_sales": bev,
         "ent_sales": ent,
         "other_sales": other,
+        "daily_sales": s["daily"],
         "total_labor_pct": (l["total_cost"] / total_sales * 100) if total_sales else 0,
         "kit_labor_pct": (l["kit_cost"] / food * 100) if food else 0,
         "foh_labor_pct": (l["foh_cost"] / non_food * 100) if non_food else 0,
@@ -132,6 +182,9 @@ def compute(start, end):
         "foh_labor_cost": l["foh_cost"],
         "labor_days": l["days"],
     }
+    if with_attendance:
+        out["attendance"] = attendance_for(start, end)
+    return out
 
 
 def fmt_money(v):
@@ -226,7 +279,6 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         ("Employee Count",          "—"),
         ("Google Review Count",     "—"),
         ("Voids & Comps",           "≤ 1%"),
-        ("Staff Attendance Issues", "0"),
     ]
     pending_html = "".join([
         f"""
@@ -239,6 +291,105 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         """
         for n, t in pending_rows
     ])
+
+    # Staff Attendance Issues — real data via AttendanceAgent core
+    att = this_year.get("attendance") or {"total": 0, "late": 0, "no_show": 0,
+                                          "called_off": 0, "incidents": [], "ok": False}
+    att_total = att["total"]
+    att_target_hit = att_total == 0
+    att_target_class = "target-hit" if att_target_hit else "target-miss"
+    att_target_label = "ON TARGET" if att_target_hit else "OVER TARGET"
+    att_value_color = "var(--green)" if att_target_hit else "var(--red)"
+    def _incident_li(i):
+        kind_slug = i["kind"].lower().replace("-", "").replace(" ", "")
+        detail_html = f'<span class="att-detail">{i["detail"]}</span>' if i["detail"] else ""
+        return (f'<li><span class="att-kind att-{kind_slug}">{i["kind"]}</span>'
+                f'<span class="att-name">{i["name"]}</span>'
+                f'<span class="att-date">{i["date"]}</span>'
+                f'{detail_html}</li>')
+    att_incidents_html = "".join(_incident_li(i) for i in att["incidents"]) or \
+        '<li class="att-empty">No incidents this week.</li>'
+    attendance_card_html = f"""
+        <div class="card attendance-card" style="--accent: #ff5470">
+          <div class="card-title">Staff Attendance Issues</div>
+          <div class="card-value" style="color: {att_value_color};">{att_total}</div>
+          <div class="card-prior">{att['late']} late · {att['no_show']} no-show · {att['called_off']} called off · target 0</div>
+          <div class="card-delta">
+            <span class="target-pill {att_target_class}">{att_target_label}</span>
+          </div>
+          <details class="att-details">
+            <summary>{'View incidents' if att['incidents'] else 'No incidents'}</summary>
+            <ul class="att-list">{att_incidents_html}</ul>
+          </details>
+        </div>
+    """
+
+    # Daily Sales Breakdown chart — vertical bars, one per day, with YoY tooltip
+    daily_this = this_year["daily_sales"]
+    daily_last = last_year["daily_sales"]
+    # build the 7-day list using ISO dates from this_start to this_end
+    def daterange(s, e):
+        d = datetime.fromisoformat(s).date()
+        ed = datetime.fromisoformat(e).date()
+        while d <= ed:
+            yield d
+            d += timedelta(days=1)
+    days_this = list(daterange(this_start, this_end))
+    days_last = list(daterange(last_start, last_end))
+    max_val = max([daily_this.get(d.isoformat(), 0) for d in days_this] + [1])
+    weekday_short = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    bars = []
+    for i, d in enumerate(days_this):
+        v_this = daily_this.get(d.isoformat(), 0)
+        v_last = daily_last.get(days_last[i].isoformat(), 0) if i < len(days_last) else 0
+        pct = (v_this / max_val) * 100 if max_val else 0
+        delta_pct = ((v_this - v_last) / v_last * 100) if v_last else 0
+        delta_class = "up" if delta_pct > 0 else "down" if delta_pct < 0 else "flat"
+        delta_str = f"{delta_pct:+.0f}%" if v_last else "new"
+        # Find the biggest day for a "best day" crown
+        bars.append({
+            "day": weekday_short[d.weekday()],
+            "date": d.strftime("%-m/%-d"),
+            "v_this": v_this,
+            "v_last": v_last,
+            "pct": pct,
+            "delta_class": delta_class,
+            "delta_str": delta_str,
+        })
+    best_day_idx = max(range(len(bars)), key=lambda i: bars[i]["v_this"])
+    chart_bars_html = "".join([
+        f"""
+        <div class="bar-col{' best' if i == best_day_idx else ''}">
+          <div class="bar-amount">{fmt_money(b['v_this'])}</div>
+          <div class="bar-wrap">
+            <div class="bar" style="height: {b['pct']:.1f}%;">
+              <div class="bar-delta bar-delta-{b['delta_class']}">{b['delta_str']}</div>
+            </div>
+          </div>
+          <div class="bar-day">{b['day']}</div>
+          <div class="bar-date">{b['date']}</div>
+          <div class="bar-prior">vs {fmt_money(b['v_last'])} LY</div>
+        </div>
+        """
+        for i, b in enumerate(bars)
+    ])
+    chart_total = sum(b["v_this"] for b in bars)
+    chart_avg = chart_total / len(bars) if bars else 0
+    daily_chart_html = f"""
+      <div class="daily-chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Daily Sales Breakdown</div>
+            <div class="chart-sub">Best day: <strong>{bars[best_day_idx]['day']} {bars[best_day_idx]['date']}</strong> at {fmt_money(bars[best_day_idx]['v_this'])} · 7-day avg {fmt_money(chart_avg)}</div>
+          </div>
+          <div class="chart-legend">
+            <span class="legend-item"><span class="legend-swatch"></span>This week</span>
+            <span class="legend-item"><span class="legend-dot legend-up"></span>vs same day LY</span>
+          </div>
+        </div>
+        <div class="chart-bars">{chart_bars_html}</div>
+      </div>
+    """
 
     # Headline summary
     sales_delta_pct = ((this_year["total_sales"] - last_year["total_sales"]) / last_year["total_sales"] * 100) if last_year["total_sales"] else 0
@@ -501,6 +652,211 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     font-style: italic;
   }}
 
+  /* Daily Sales Chart */
+  .daily-chart-card {{
+    padding: 28px 28px 24px;
+    border-radius: 24px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(12px);
+    overflow: hidden;
+    position: relative;
+  }}
+  .daily-chart-card::after {{
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #7c5cff, #ff5470, #16d39a);
+  }}
+  .chart-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }}
+  .chart-title {{
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+  }}
+  .chart-sub {{
+    color: var(--fg-dim);
+    font-size: 13px;
+    margin-top: 4px;
+  }}
+  .chart-sub strong {{ color: var(--fg); }}
+  .chart-legend {{
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--fg-dim);
+  }}
+  .legend-item {{ display: inline-flex; align-items: center; gap: 6px; }}
+  .legend-swatch {{
+    display: inline-block; width: 12px; height: 12px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #7c5cff 0%, #5a3fd6 100%);
+  }}
+  .legend-dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; }}
+  .legend-up {{ background: var(--green); }}
+  .chart-bars {{
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 12px;
+    align-items: end;
+    height: 280px;
+    margin-bottom: 8px;
+  }}
+  .bar-col {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    text-align: center;
+  }}
+  .bar-amount {{
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 6px;
+    color: var(--fg);
+    height: 18px;
+  }}
+  .bar-col.best .bar-amount {{
+    color: var(--green);
+    font-weight: 700;
+  }}
+  .bar-col.best .bar-amount::after {{
+    content: '  ★';
+    color: var(--green);
+  }}
+  .bar-wrap {{
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: end;
+    justify-content: center;
+    position: relative;
+  }}
+  .bar {{
+    width: 75%;
+    min-height: 4px;
+    border-radius: 8px 8px 2px 2px;
+    background: linear-gradient(180deg, #7c5cff 0%, #5a3fd6 100%);
+    position: relative;
+    transition: transform .2s ease, filter .2s ease;
+    animation: barGrow 1.1s cubic-bezier(.2,.7,.2,1) backwards;
+    cursor: default;
+  }}
+  .bar-col:nth-child(1) .bar {{ animation-delay: .05s; }}
+  .bar-col:nth-child(2) .bar {{ animation-delay: .12s; }}
+  .bar-col:nth-child(3) .bar {{ animation-delay: .19s; }}
+  .bar-col:nth-child(4) .bar {{ animation-delay: .26s; }}
+  .bar-col:nth-child(5) .bar {{ animation-delay: .33s; }}
+  .bar-col:nth-child(6) .bar {{ animation-delay: .40s; }}
+  .bar-col:nth-child(7) .bar {{ animation-delay: .47s; }}
+  .bar-col.best .bar {{
+    background: linear-gradient(180deg, #16d39a 0%, #0fa37b 100%);
+    box-shadow: 0 0 32px rgba(22, 211, 154, 0.45);
+  }}
+  .bar:hover {{
+    transform: translateY(-2px);
+    filter: brightness(1.12);
+  }}
+  .bar-delta {{
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }}
+  .bar-delta-up {{ background: rgba(22,211,154,0.18); color: var(--green); }}
+  .bar-delta-down {{ background: rgba(255,84,112,0.18); color: var(--red); }}
+  .bar-delta-flat {{ background: rgba(255,255,255,0.10); color: var(--fg-dim); }}
+  .bar-day {{
+    margin-top: 8px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--fg);
+  }}
+  .bar-date {{
+    font-size: 11px;
+    color: var(--fg-dim);
+    margin-top: 1px;
+  }}
+  .bar-prior {{
+    font-size: 11px;
+    color: var(--fg-dim);
+    opacity: 0.7;
+    margin-top: 4px;
+  }}
+  @keyframes barGrow {{
+    from {{ height: 0; opacity: 0; }}
+  }}
+
+  /* Attendance card details */
+  .attendance-card {{ grid-column: span 2; }}
+  .att-details {{
+    margin-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 12px;
+  }}
+  .att-details summary {{
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--fg-dim);
+    font-weight: 500;
+    list-style: none;
+    user-select: none;
+    padding: 4px 0;
+  }}
+  .att-details summary::-webkit-details-marker {{ display: none; }}
+  .att-details summary::before {{
+    content: '▸ ';
+    display: inline-block;
+    transition: transform .15s ease;
+  }}
+  .att-details[open] summary::before {{ transform: rotate(90deg); }}
+  .att-list {{
+    list-style: none;
+    padding: 8px 0 0;
+    margin: 0;
+  }}
+  .att-list li {{
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed rgba(255,255,255,0.06);
+    font-size: 13px;
+  }}
+  .att-list li:last-child {{ border-bottom: none; }}
+  .att-kind {{
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    text-align: center;
+  }}
+  .att-late      {{ background: rgba(255,138,61,0.18); color: var(--orange); }}
+  .att-noshow    {{ background: rgba(255,84,112,0.20); color: var(--red); }}
+  .att-calledoff {{ background: rgba(255,84,112,0.14); color: var(--red); }}
+  .att-name      {{ font-weight: 500; }}
+  .att-date      {{ color: var(--fg-dim); font-size: 12px; }}
+  .att-detail    {{ grid-column: 2 / -1; color: var(--fg-dim); font-size: 12px; }}
+  .att-empty     {{ color: var(--fg-dim); font-style: italic; padding: 12px 0 !important; border: none !important; display: block !important; }}
+
   footer {{
     text-align: center;
     margin-top: 64px;
@@ -553,6 +909,12 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
   <h2 class="section-title">Labor <span class="badge">% of revenue · lower is better</span></h2>
   <div class="grid grid-3">{labor_html}</div>
 
+  <h2 class="section-title">Daily Sales Breakdown <span class="badge">{label} · day-by-day</span></h2>
+  {daily_chart_html}
+
+  <h2 class="section-title">Staff Attendance <span class="badge">7Shifts · this fiscal week</span></h2>
+  <div class="grid grid-3">{attendance_card_html}</div>
+
   <h2 class="section-title">Operational Metrics <span class="badge">data wiring in progress</span></h2>
   <div class="grid grid-6">{pending_html}</div>
 
@@ -580,8 +942,8 @@ def main():
         sys.exit(2)
 
     print(f"Fetching {label}: {this_start}→{this_end} vs {last_start}→{last_end}")
-    this_year = compute(this_start, this_end)
-    last_year = compute(last_start, last_end)
+    this_year = compute(this_start, this_end, with_attendance=True)
+    last_year = compute(last_start, last_end, with_attendance=False)
     this_year["_label"] = this_start[:4]
     last_year["_label"] = last_start[:4]
 
