@@ -837,9 +837,12 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
 def main():
     args = sys.argv[1:]
     if len(args) == 0:
-        # default: P5W4 2026
+        # default: P5W4 2026 vs P5W4 2025
+        # Note: FY2025 P5W4 = May 26 – Jun 1 (per ops calendar — FY2024 was a
+        # 53-week year, so the prior-year fiscal alignment is one week later
+        # than a naive 52-week subtraction would suggest).
         this_start, this_end = "2026-05-25", "2026-05-31"
-        last_start, last_end = "2025-05-19", "2025-05-25"
+        last_start, last_end = "2025-05-26", "2025-06-01"
         label = "P5W4"
     elif len(args) >= 5:
         this_start, this_end, last_start, last_end, label = args[:5]
