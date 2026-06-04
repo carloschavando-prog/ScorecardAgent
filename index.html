@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>On Par · P5W4 Scorecard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-1: #0b0820;
+    --bg-2: #1a0f3a;
+    --bg-3: #2d1b5e;
+    --fg: #f3f0ff;
+    --fg-dim: #b8a8e0;
+    --card-bg: rgba(255,255,255,0.06);
+    --card-border: rgba(255,255,255,0.10);
+    --green: #16d39a;
+    --red: #ff5470;
+    --orange: #ff8a3d;
+    --purple: #7c5cff;
+    --pink: #ff5470;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--fg);
+    background: var(--bg-1);
+    background-image:
+      radial-gradient(circle at 10% 0%, rgba(124, 92, 255, 0.35), transparent 40%),
+      radial-gradient(circle at 90% 0%, rgba(255, 84, 112, 0.25), transparent 40%),
+      radial-gradient(circle at 50% 100%, rgba(22, 211, 154, 0.20), transparent 50%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-2));
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+  .hero {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+  .hero-eyebrow {
+    display: inline-block;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    padding: 8px 16px;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.03);
+    backdrop-filter: blur(8px);
+  }
+  .hero h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: clamp(40px, 6vw, 72px);
+    margin: 18px 0 12px;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #fff 0%, #c0a8ff 50%, #ff8fb0 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    line-height: 1.05;
+  }
+  .hero-sub {
+    font-size: 18px;
+    color: var(--fg-dim);
+    margin: 0;
+  }
+  .hero-headline {
+    margin-top: 28px;
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 28px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 999px;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .hero-headline .big-emoji { font-size: 28px; }
+  .hero-headline .stat {
+    font-weight: 700;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+  .hero-headline .stat.up { color: var(--green); }
+  .hero-headline .stat.down { color: var(--red); }
+
+  .section-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 28px;
+    margin: 56px 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-title .badge {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    color: var(--fg-dim);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .grid {
+    display: grid;
+    gap: 20px;
+  }
+  .grid-4 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .grid-6 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
+  .card {
+    --accent: var(--purple);
+    position: relative;
+    padding: 24px;
+    border-radius: 20px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(12px);
+    overflow: hidden;
+    transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+    opacity: 0;
+    transform: translateY(16px);
+    animation: fadeup .55s cubic-bezier(.2,.7,.2,1) forwards;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--accent) 0%, transparent 60%);
+    opacity: 0.08;
+    pointer-events: none;
+  }
+  .card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent);
+    opacity: 0.85;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,0.20);
+    box-shadow: 0 18px 40px -18px rgba(0,0,0,0.6);
+  }
+  .card-emoji {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
+  .card-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fg-dim);
+    margin-bottom: 8px;
+  }
+  .card-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 38px;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .card-value.pending {
+    color: var(--fg-dim);
+    font-size: 28px;
+    opacity: 0.6;
+  }
+  .card-prior {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--fg-dim);
+  }
+  .card-delta {
+    margin-top: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+  .delta-up   { background: rgba(22,211,154,0.14); color: var(--green); }
+  .delta-down { background: rgba(255,84,112,0.14); color: var(--red); }
+  .delta-flat { background: rgba(255,255,255,0.08); color: var(--fg-dim); }
+
+  .labor-bar {
+    margin: 14px 0 6px;
+    position: relative;
+    width: 100%;
+    height: 8px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 999px;
+    overflow: visible;
+  }
+  .labor-bar-fill {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    border-radius: 999px;
+    transition: width 1.2s cubic-bezier(.2,.7,.2,1);
+    max-width: 100%;
+  }
+  .labor-bar-target {
+    position: absolute;
+    top: -4px;
+    width: 2px;
+    height: 16px;
+    background: rgba(255,255,255,0.45);
+    transform: translateX(-1px);
+  }
+  .target-pill {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    margin-right: 4px;
+  }
+  .target-hit  { background: rgba(22,211,154,0.18); color: var(--green); }
+  .target-miss { background: rgba(255,84,112,0.18); color: var(--red); }
+
+  .pending-card {
+    opacity: 0.78;
+  }
+  .pending-tag {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--fg-dim);
+    font-style: italic;
+  }
+
+  footer {
+    text-align: center;
+    margin-top: 64px;
+    color: var(--fg-dim);
+    font-size: 13px;
+  }
+  footer .small {
+    margin-top: 6px;
+    font-size: 11px;
+    opacity: 0.6;
+  }
+
+  @keyframes fadeup {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  /* Stagger card animations */
+  .grid .card:nth-child(1) { animation-delay: .05s; }
+  .grid .card:nth-child(2) { animation-delay: .12s; }
+  .grid .card:nth-child(3) { animation-delay: .19s; }
+  .grid .card:nth-child(4) { animation-delay: .26s; }
+  .grid .card:nth-child(5) { animation-delay: .33s; }
+  .grid .card:nth-child(6) { animation-delay: .40s; }
+
+  @media (max-width: 640px) {
+    .container { padding: 32px 16px 56px; }
+    .card-value { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="hero">
+    <span class="hero-eyebrow">EOS Pulse Scorecard · On Par Entertainment</span>
+    <h1>P5W4<br/><span style="font-size: 0.55em; opacity: 0.8;">May 25 – May 31, 2026</span></h1>
+    <p class="hero-sub">Same fiscal week last year: May 19 – May 25, 2025</p>
+    <div class="hero-headline">
+      <span class="big-emoji">➡️</span>
+      <span>Total Sales</span>
+      <span class="stat down">-3.2%</span>
+      <span>YoY</span>
+      <span style="opacity: .4;">·</span>
+      <span class="stat" style="color: var(--red);">0/3</span>
+      <span>labor targets hit</span>
+    </div>
+  </header>
+
+  <h2 class="section-title">Sales <span class="badge">vs same week last year</span></h2>
+  <div class="grid grid-4">
+        <div class="card sales-card" style="--accent: #7c5cff">
+          <div class="card-emoji">💰</div>
+          <div class="card-title">Total Sales</div>
+          <div class="card-value">$68,359</div>
+          <div class="card-prior">vs $70,637 (2025)</div>
+          <div class="card-delta delta-down">▼ −$2,278 &nbsp;·&nbsp; -3.2%</div>
+        </div>
+        
+        <div class="card sales-card" style="--accent: #ff8a3d">
+          <div class="card-emoji">🍔</div>
+          <div class="card-title">Food Sales</div>
+          <div class="card-value">$22,814</div>
+          <div class="card-prior">vs $22,036 (2025)</div>
+          <div class="card-delta delta-up">▲ +$779 &nbsp;·&nbsp; +3.5%</div>
+        </div>
+        
+        <div class="card sales-card" style="--accent: #16d39a">
+          <div class="card-emoji">🍹</div>
+          <div class="card-title">Beverage Sales</div>
+          <div class="card-value">$16,966</div>
+          <div class="card-prior">vs $21,897 (2025)</div>
+          <div class="card-delta delta-down">▼ −$4,931 &nbsp;·&nbsp; -22.5%</div>
+        </div>
+        
+        <div class="card sales-card" style="--accent: #ff5470">
+          <div class="card-emoji">🎯</div>
+          <div class="card-title">Entertainment Sales</div>
+          <div class="card-value">$25,526</div>
+          <div class="card-prior">vs $23,386 (2025)</div>
+          <div class="card-delta delta-up">▲ +$2,140 &nbsp;·&nbsp; +9.1%</div>
+        </div>
+        </div>
+
+  <h2 class="section-title">Labor <span class="badge">% of revenue · lower is better</span></h2>
+  <div class="grid grid-3">
+        <div class="card labor-card" style="--accent: #7c5cff">
+          <div class="card-emoji">👥</div>
+          <div class="card-title">Total Labor %</div>
+          <div class="card-value">17.22%</div>
+          <div class="card-prior">vs 15.84% (2025) · target ≤ 15.00%</div>
+          <div class="labor-bar">
+            <div class="labor-bar-fill" style="width: 114.8%; background: linear-gradient(90deg, #ff8a3d, #ff5470);"></div>
+            <div class="labor-bar-target" style="left: 100%;"></div>
+          </div>
+          <div class="card-delta delta-down">
+            <span class="target-pill target-miss">OVER TARGET</span>
+            &nbsp; ▲ +1.38pp YoY
+          </div>
+        </div>
+        
+        <div class="card labor-card" style="--accent: #ff8a3d">
+          <div class="card-emoji">👨‍🍳</div>
+          <div class="card-title">Kitchen Labor %</div>
+          <div class="card-value">25.33%</div>
+          <div class="card-prior">vs 24.97% (2025) · target ≤ 20.00%</div>
+          <div class="labor-bar">
+            <div class="labor-bar-fill" style="width: 126.6%; background: linear-gradient(90deg, #ff8a3d, #ff5470);"></div>
+            <div class="labor-bar-target" style="left: 100%;"></div>
+          </div>
+          <div class="card-delta delta-down">
+            <span class="target-pill target-miss">OVER TARGET</span>
+            &nbsp; ▲ +0.36pp YoY
+          </div>
+        </div>
+        
+        <div class="card labor-card" style="--accent: #16d39a">
+          <div class="card-emoji">🍽️</div>
+          <div class="card-title">FOH Labor %</div>
+          <div class="card-value">13.16%</div>
+          <div class="card-prior">vs 11.70% (2025) · target ≤ 10.00%</div>
+          <div class="labor-bar">
+            <div class="labor-bar-fill" style="width: 131.6%; background: linear-gradient(90deg, #ff8a3d, #ff5470);"></div>
+            <div class="labor-bar-target" style="left: 100%;"></div>
+          </div>
+          <div class="card-delta delta-down">
+            <span class="target-pill target-miss">OVER TARGET</span>
+            &nbsp; ▲ +1.46pp YoY
+          </div>
+        </div>
+        </div>
+
+  <h2 class="section-title">Operational Metrics <span class="badge">data wiring in progress</span></h2>
+  <div class="grid grid-6">
+        <div class="card pending-card">
+          <div class="card-emoji">🥩</div>
+          <div class="card-title">Food COS %</div>
+          <div class="card-value pending">TBD</div>
+          <div class="card-prior">target ≤ 30%</div>
+          <div class="pending-tag">📡 awaiting data source</div>
+        </div>
+        
+        <div class="card pending-card">
+          <div class="card-emoji">🍷</div>
+          <div class="card-title">Beverage COS %</div>
+          <div class="card-value pending">TBD</div>
+          <div class="card-prior">target ≤ 20%</div>
+          <div class="pending-tag">📡 awaiting data source</div>
+        </div>
+        
+        <div class="card pending-card">
+          <div class="card-emoji">🧑‍🤝‍🧑</div>
+          <div class="card-title">Employee Count</div>
+          <div class="card-value pending">TBD</div>
+          <div class="card-prior">target —</div>
+          <div class="pending-tag">📡 awaiting data source</div>
+        </div>
+        
+        <div class="card pending-card">
+          <div class="card-emoji">⭐</div>
+          <div class="card-title">Google Review Count</div>
+          <div class="card-value pending">TBD</div>
+          <div class="card-prior">target —</div>
+          <div class="pending-tag">📡 awaiting data source</div>
+        </div>
+        
+        <div class="card pending-card">
+          <div class="card-emoji">🚫</div>
+          <div class="card-title">Voids & Comps</div>
+          <div class="card-value pending">TBD</div>
+          <div class="card-prior">target ≤ 1%</div>
+          <div class="pending-tag">📡 awaiting data source</div>
+        </div>
+        
+        <div class="card pending-card">
+          <div class="card-emoji">📋</div>
+          <div class="card-title">Staff Attendance Issues</div>
+          <div class="card-value pending">TBD</div>
+          <div class="card-prior">target 0</div>
+          <div class="pending-tag">📡 awaiting data source</div>
+        </div>
+        </div>
+
+  <footer>
+    Generated by <strong>ScorecardAgent</strong> · Source: Supabase <code>labor_daily</code>, <code>sales</code>, <code>ts_events</code>
+    <div class="small">P5W4 · 2026-05-25 → 2026-05-31  ·  YoY: 2025-05-19 → 2025-05-25</div>
+  </footer>
+
+</div>
+</body>
+</html>
