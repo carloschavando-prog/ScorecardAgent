@@ -160,7 +160,7 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     """label: e.g. 'P5W4'. *_start/*_end are ISO dates. *_year is a computed dict."""
 
     # ---- sales cards ----
-    def sales_card(title, emoji, this_val, last_val, accent):
+    def sales_card(title, this_val, last_val, accent):
         d_str, direction, pct = delta(this_val, last_val, currency=True)
         arrow = "▲" if direction == "up" else ("▼" if direction == "down" else "■")
         chip_class = (
@@ -170,7 +170,6 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         )
         return f"""
         <div class="card sales-card" style="--accent: {accent}">
-          <div class="card-emoji">{emoji}</div>
           <div class="card-title">{title}</div>
           <div class="card-value">{fmt_money(this_val)}</div>
           <div class="card-prior">vs {fmt_money(last_val)} ({last_year['_label']})</div>
@@ -179,7 +178,7 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         """
 
     # ---- labor cards (with target bars) ----
-    def labor_card(title, emoji, this_val, last_val, target, accent):
+    def labor_card(title, this_val, last_val, target, accent):
         # better = lower (% of revenue)
         d_str, direction, _ = delta(this_val, last_val)
         # for labor, "up" (cost rose) is bad, "down" is good — flip arrow color
@@ -187,13 +186,12 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         arrow = "▲" if direction == "up" else ("▼" if direction == "down" else "■")
         hit_target = this_val <= target
         target_class = "target-hit" if hit_target else "target-miss"
-        target_label = "ON TARGET 🎯" if hit_target else "OVER TARGET"
+        target_label = "ON TARGET" if hit_target else "OVER TARGET"
         # bar fill: scale so target = 100% width
         bar_pct = min((this_val / target) * 100, 175) if target > 0 else 0
         bar_color = "linear-gradient(90deg, #16d39a, #16d39a)" if hit_target else "linear-gradient(90deg, #ff8a3d, #ff5470)"
         return f"""
         <div class="card labor-card" style="--accent: {accent}">
-          <div class="card-emoji">{emoji}</div>
           <div class="card-title">{title}</div>
           <div class="card-value">{fmt_pct(this_val)}</div>
           <div class="card-prior">vs {fmt_pct(last_val)} ({last_year['_label']}) · target ≤ {fmt_pct(target)}</div>
@@ -209,43 +207,41 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         """
 
     sales_html = "".join([
-        sales_card("Total Sales",        "💰", this_year["total_sales"], last_year["total_sales"], "#7c5cff"),
-        sales_card("Food Sales",         "🍔", this_year["food_sales"],  last_year["food_sales"],  "#ff8a3d"),
-        sales_card("Beverage Sales",     "🍹", this_year["bev_sales"],   last_year["bev_sales"],   "#16d39a"),
-        sales_card("Entertainment Sales","🎯", this_year["ent_sales"],   last_year["ent_sales"],   "#ff5470"),
+        sales_card("Total Sales",         this_year["total_sales"], last_year["total_sales"], "#7c5cff"),
+        sales_card("Food Sales",          this_year["food_sales"],  last_year["food_sales"],  "#ff8a3d"),
+        sales_card("Beverage Sales",      this_year["bev_sales"],   last_year["bev_sales"],   "#16d39a"),
+        sales_card("Entertainment Sales", this_year["ent_sales"],   last_year["ent_sales"],   "#ff5470"),
     ])
 
     labor_html = "".join([
-        labor_card("Total Labor %",  "👥", this_year["total_labor_pct"], last_year["total_labor_pct"], 15.0, "#7c5cff"),
-        labor_card("Kitchen Labor %","👨‍🍳", this_year["kit_labor_pct"],   last_year["kit_labor_pct"],   20.0, "#ff8a3d"),
-        labor_card("FOH Labor %",    "🍽️", this_year["foh_labor_pct"],   last_year["foh_labor_pct"],   10.0, "#16d39a"),
+        labor_card("Total Labor %",   this_year["total_labor_pct"], last_year["total_labor_pct"], 15.0, "#7c5cff"),
+        labor_card("Kitchen Labor %", this_year["kit_labor_pct"],   last_year["kit_labor_pct"],   20.0, "#ff8a3d"),
+        labor_card("FOH Labor %",     this_year["foh_labor_pct"],   last_year["foh_labor_pct"],   10.0, "#16d39a"),
     ])
 
     # bottom: placeholders for the rows we don't yet have a data source for
     pending_rows = [
-        ("Food COS %",             "🥩", "≤ 30%"),
-        ("Beverage COS %",         "🍷", "≤ 20%"),
-        ("Employee Count",         "🧑‍🤝‍🧑", "—"),
-        ("Google Review Count",    "⭐", "—"),
-        ("Voids & Comps",          "🚫", "≤ 1%"),
-        ("Staff Attendance Issues","📋", "0"),
+        ("Food COS %",              "≤ 30%"),
+        ("Beverage COS %",          "≤ 20%"),
+        ("Employee Count",          "—"),
+        ("Google Review Count",     "—"),
+        ("Voids & Comps",           "≤ 1%"),
+        ("Staff Attendance Issues", "0"),
     ]
     pending_html = "".join([
         f"""
         <div class="card pending-card">
-          <div class="card-emoji">{e}</div>
           <div class="card-title">{n}</div>
           <div class="card-value pending">TBD</div>
           <div class="card-prior">target {t}</div>
-          <div class="pending-tag">📡 awaiting data source</div>
+          <div class="pending-tag">awaiting data source</div>
         </div>
         """
-        for n, e, t in pending_rows
+        for n, t in pending_rows
     ])
 
     # Headline summary
     sales_delta_pct = ((this_year["total_sales"] - last_year["total_sales"]) / last_year["total_sales"] * 100) if last_year["total_sales"] else 0
-    headline_emoji = "🚀" if sales_delta_pct > 5 else ("📈" if sales_delta_pct > 0 else ("📉" if sales_delta_pct < -5 else "➡️"))
     labor_hit = sum([
         this_year["total_labor_pct"] <= 15,
         this_year["kit_labor_pct"] <= 20,
@@ -348,7 +344,6 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     font-size: 16px;
     font-weight: 500;
   }}
-  .hero-headline .big-emoji {{ font-size: 28px; }}
   .hero-headline .stat {{
     font-weight: 700;
     font-family: 'Space Grotesk', sans-serif;
@@ -418,10 +413,6 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     transform: translateY(-3px);
     border-color: rgba(255,255,255,0.20);
     box-shadow: 0 18px 40px -18px rgba(0,0,0,0.6);
-  }}
-  .card-emoji {{
-    font-size: 32px;
-    margin-bottom: 8px;
   }}
   .card-title {{
     font-family: 'Space Grotesk', sans-serif;
@@ -547,7 +538,6 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     <h1>{label}<br/><span style="font-size: 0.55em; opacity: 0.8;">{pretty(this_start)} – {pretty(this_end)}, {this_start[:4]}</span></h1>
     <p class="hero-sub">Same fiscal week last year: {pretty(last_start)} – {pretty(last_end)}, {last_start[:4]}</p>
     <div class="hero-headline">
-      <span class="big-emoji">{headline_emoji}</span>
       <span>Total Sales</span>
       <span class="stat {'up' if sales_delta_pct > 0 else 'down' if sales_delta_pct < 0 else 'flat'}">{sales_delta_pct:+.1f}%</span>
       <span>YoY</span>
