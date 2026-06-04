@@ -11,7 +11,6 @@ Usage:
     python generate.py 2026-05-25 2026-05-31 2025-05-19 2025-05-25 P5W4
 """
 import json
-import math
 import os
 import sys
 import urllib.request
@@ -398,63 +397,6 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         </div>
     """
 
-    # Revenue Mix donut — animated SVG, slices in card-accent colors.
-    mix = [
-        ("Food",          this_year["food_sales"], "#ff8a3d"),
-        ("Beverage",      this_year["bev_sales"],  "#16d39a"),
-        ("Entertainment", this_year["ent_sales"],  "#ff5470"),
-        ("Other",         this_year["other_sales"], "#7c5cff"),
-    ]
-    total_mix = sum(v for _, v, _ in mix) or 1
-    R = 40
-    CIRC = 2 * math.pi * R
-    slices_svg = ""
-    legend_rows = ""
-    cumulative = 0.0
-    for i, (name, val, color) in enumerate(mix):
-        pct = val / total_mix
-        arc = pct * CIRC
-        slices_svg += (
-            f'<circle r="{R}" cx="50" cy="50" fill="transparent" stroke="{color}" '
-            f'stroke-width="14" stroke-linecap="butt" '
-            f'stroke-dasharray="{arc:.3f} {CIRC - arc:.3f}" '
-            f'stroke-dashoffset="{-cumulative:.3f}" '
-            f'transform="rotate(-90 50 50)" class="donut-slice" '
-            f'style="animation-delay: {0.1 + i*0.12:.2f}s" />'
-        )
-        cumulative += arc
-        legend_rows += (
-            f'<div class="legend-row">'
-            f'<span class="legend-sw" style="background:{color}"></span>'
-            f'<span class="legend-label">{name}</span>'
-            f'<span class="legend-val">{fmt_money(val)}</span>'
-            f'<span class="legend-pct">{pct*100:.1f}%</span>'
-            f'</div>'
-        )
-
-    mix_chart_html = f"""
-      <div class="mix-card">
-        <div class="mix-header">
-          <div>
-            <div class="mix-title">Revenue Mix</div>
-            <div class="mix-sub">Where the week's sales came from</div>
-          </div>
-        </div>
-        <div class="mix-body">
-          <div class="donut-wrap">
-            <svg viewBox="0 0 100 100" class="donut" aria-label="Revenue mix donut chart">
-              <circle r="{R}" cx="50" cy="50" fill="transparent" stroke="rgba(255,255,255,0.05)" stroke-width="14" />
-              {slices_svg}
-            </svg>
-            <div class="donut-center">
-              <div class="donut-total-label">Total</div>
-              <div class="donut-total">{fmt_money(this_year['total_sales'])}</div>
-            </div>
-          </div>
-          <div class="mix-legend">{legend_rows}</div>
-        </div>
-      </div>
-    """
 
     # Headline summary
     sales_delta_pct = ((this_year["total_sales"] - last_year["total_sales"]) / last_year["total_sales"] * 100) if last_year["total_sales"] else 0
@@ -746,124 +688,6 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     font-style: italic;
   }}
 
-  /* Revenue Mix donut */
-  .mix-card {{
-    padding: 32px;
-    border-radius: 24px;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    backdrop-filter: blur(12px);
-    overflow: hidden;
-    position: relative;
-  }}
-  .mix-card::after {{
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--green) 0%, var(--red) 100%);
-    opacity: 0.65;
-  }}
-  .mix-header {{ margin-bottom: 24px; }}
-  .mix-title {{
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: 20px;
-  }}
-  .mix-sub {{ color: var(--fg-dim); font-size: 13px; margin-top: 4px; }}
-  .mix-body {{
-    display: grid;
-    grid-template-columns: 260px 1fr;
-    gap: 36px;
-    align-items: center;
-  }}
-  @media (max-width: 720px) {{
-    .mix-body {{ grid-template-columns: 1fr; }}
-    .donut-wrap {{ margin: 0 auto; }}
-  }}
-  .donut-wrap {{
-    position: relative;
-    width: 260px;
-    height: 260px;
-  }}
-  .donut {{
-    width: 100%;
-    height: 100%;
-    transform: rotate(0deg);
-    filter: drop-shadow(0 6px 24px rgba(0,0,0,0.35));
-  }}
-  .donut-slice {{
-    transform-origin: 50% 50%;
-    animation: sliceIn 1s cubic-bezier(.2,.7,.2,1) backwards;
-    transition: filter .2s ease, transform .2s ease;
-  }}
-  .donut-slice:hover {{
-    filter: brightness(1.15);
-  }}
-  @keyframes sliceIn {{
-    from {{ opacity: 0; stroke-width: 0; }}
-    to   {{ opacity: 1; stroke-width: 14; }}
-  }}
-  .donut-center {{
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    pointer-events: none;
-  }}
-  .donut-total-label {{
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--fg-dim);
-  }}
-  .donut-total {{
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: 30px;
-    letter-spacing: -0.02em;
-    margin-top: 4px;
-  }}
-  .mix-legend {{ display: flex; flex-direction: column; gap: 12px; }}
-  .legend-row {{
-    display: grid;
-    grid-template-columns: 14px 1fr auto 64px;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 12px;
-    transition: transform .15s ease, background .15s ease;
-  }}
-  .legend-row:hover {{
-    transform: translateX(2px);
-    background: rgba(255,255,255,0.07);
-  }}
-  .legend-sw {{
-    width: 14px; height: 14px;
-    border-radius: 4px;
-  }}
-  .legend-label {{
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 14px;
-  }}
-  .legend-val {{
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 14px;
-    color: var(--fg);
-  }}
-  .legend-pct {{
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: 14px;
-    text-align: right;
-    color: var(--fg-dim);
-  }}
-
   /* Manual entry cards (Google Reviews, Employee Count) */
   .manual-tag {{
     margin-top: 12px;
@@ -991,9 +815,6 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
 
   <h2 class="section-title">Cost of Sales <span class="badge">lower is better</span></h2>
   <div class="grid grid-3">{cost_html}</div>
-
-  <h2 class="section-title">Revenue Mix <span class="badge">share of total sales</span></h2>
-  {mix_chart_html}
 
   <h2 class="section-title">Team <span class="badge">attendance · headcount · reviews</span></h2>
   <div class="grid grid-3">
