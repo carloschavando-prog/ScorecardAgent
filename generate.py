@@ -11,11 +11,19 @@ Usage:
     python generate.py 2026-05-25 2026-05-31 2025-05-19 2025-05-25 P5W4
 """
 import json
+import math
 import os
 import sys
 import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+# Manual overrides — values we don't have a feed for yet.
+# Set to None to render the card as "TBD" once automation lands.
+MANUAL = {
+    "google_reviews": 25,    # weekly count, entered by hand
+    "employee_count": 32,    # active staff at end of week
+}
 
 SUPA = "https://jrzfczhsqshejnrxgmuq.supabase.co"
 KEY = (
@@ -272,12 +280,31 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         labor_card("FOH Labor %",     this_year["foh_labor_pct"],   last_year["foh_labor_pct"],   10.0, "#16d39a"),
     ])
 
+    # Manually-entered cards (will be wired to feeds later)
+    manual_html = ""
+    if MANUAL.get("employee_count") is not None:
+        manual_html += f"""
+        <div class="card manual-card" style="--accent: #7c5cff">
+          <div class="card-title">Employee Count</div>
+          <div class="card-value">{MANUAL['employee_count']}</div>
+          <div class="card-prior">active staff this week</div>
+          <div class="manual-tag">entered manually</div>
+        </div>
+        """
+    if MANUAL.get("google_reviews") is not None:
+        manual_html += f"""
+        <div class="card manual-card" style="--accent: #16d39a">
+          <div class="card-title">Google Reviews</div>
+          <div class="card-value">{MANUAL['google_reviews']}</div>
+          <div class="card-prior">new reviews this week</div>
+          <div class="manual-tag">entered manually</div>
+        </div>
+        """
+
     # bottom: placeholders for the rows we don't yet have a data source for
     pending_rows = [
         ("Food COS %",              "≤ 30%"),
         ("Beverage COS %",          "≤ 20%"),
-        ("Employee Count",          "—"),
-        ("Google Review Count",     "—"),
         ("Voids & Comps",           "≤ 1%"),
     ]
     pending_html = "".join([
@@ -324,70 +351,61 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         </div>
     """
 
-    # Daily Sales Breakdown chart — vertical bars, one per day, with YoY tooltip
-    daily_this = this_year["daily_sales"]
-    daily_last = last_year["daily_sales"]
-    # build the 7-day list using ISO dates from this_start to this_end
-    def daterange(s, e):
-        d = datetime.fromisoformat(s).date()
-        ed = datetime.fromisoformat(e).date()
-        while d <= ed:
-            yield d
-            d += timedelta(days=1)
-    days_this = list(daterange(this_start, this_end))
-    days_last = list(daterange(last_start, last_end))
-    max_val = max([daily_this.get(d.isoformat(), 0) for d in days_this] + [1])
-    weekday_short = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
-    bars = []
-    for i, d in enumerate(days_this):
-        v_this = daily_this.get(d.isoformat(), 0)
-        v_last = daily_last.get(days_last[i].isoformat(), 0) if i < len(days_last) else 0
-        pct = (v_this / max_val) * 100 if max_val else 0
-        delta_pct = ((v_this - v_last) / v_last * 100) if v_last else 0
-        delta_class = "up" if delta_pct > 0 else "down" if delta_pct < 0 else "flat"
-        delta_str = f"{delta_pct:+.0f}%" if v_last else "new"
-        # Find the biggest day for a "best day" crown
-        bars.append({
-            "day": weekday_short[d.weekday()],
-            "date": d.strftime("%-m/%-d"),
-            "v_this": v_this,
-            "v_last": v_last,
-            "pct": pct,
-            "delta_class": delta_class,
-            "delta_str": delta_str,
-        })
-    best_day_idx = max(range(len(bars)), key=lambda i: bars[i]["v_this"])
-    chart_bars_html = "".join([
-        f"""
-        <div class="bar-col{' best' if i == best_day_idx else ''}">
-          <div class="bar-amount">{fmt_money(b['v_this'])}</div>
-          <div class="bar-wrap">
-            <div class="bar" style="height: {b['pct']:.1f}%;">
-              <div class="bar-delta bar-delta-{b['delta_class']}">{b['delta_str']}</div>
+    # Revenue Mix donut — animated SVG, slices in card-accent colors.
+    mix = [
+        ("Food",          this_year["food_sales"], "#ff8a3d"),
+        ("Beverage",      this_year["bev_sales"],  "#16d39a"),
+        ("Entertainment", this_year["ent_sales"],  "#ff5470"),
+        ("Other",         this_year["other_sales"], "#7c5cff"),
+    ]
+    total_mix = sum(v for _, v, _ in mix) or 1
+    R = 40
+    CIRC = 2 * math.pi * R
+    slices_svg = ""
+    legend_rows = ""
+    cumulative = 0.0
+    for i, (name, val, color) in enumerate(mix):
+        pct = val / total_mix
+        arc = pct * CIRC
+        slices_svg += (
+            f'<circle r="{R}" cx="50" cy="50" fill="transparent" stroke="{color}" '
+            f'stroke-width="14" stroke-linecap="butt" '
+            f'stroke-dasharray="{arc:.3f} {CIRC - arc:.3f}" '
+            f'stroke-dashoffset="{-cumulative:.3f}" '
+            f'transform="rotate(-90 50 50)" class="donut-slice" '
+            f'style="animation-delay: {0.1 + i*0.12:.2f}s" />'
+        )
+        cumulative += arc
+        legend_rows += (
+            f'<div class="legend-row">'
+            f'<span class="legend-sw" style="background:{color}"></span>'
+            f'<span class="legend-label">{name}</span>'
+            f'<span class="legend-val">{fmt_money(val)}</span>'
+            f'<span class="legend-pct">{pct*100:.1f}%</span>'
+            f'</div>'
+        )
+
+    mix_chart_html = f"""
+      <div class="mix-card">
+        <div class="mix-header">
+          <div>
+            <div class="mix-title">Revenue Mix</div>
+            <div class="mix-sub">Where the week's sales came from</div>
+          </div>
+        </div>
+        <div class="mix-body">
+          <div class="donut-wrap">
+            <svg viewBox="0 0 100 100" class="donut" aria-label="Revenue mix donut chart">
+              <circle r="{R}" cx="50" cy="50" fill="transparent" stroke="rgba(255,255,255,0.05)" stroke-width="14" />
+              {slices_svg}
+            </svg>
+            <div class="donut-center">
+              <div class="donut-total-label">Total</div>
+              <div class="donut-total">{fmt_money(this_year['total_sales'])}</div>
             </div>
           </div>
-          <div class="bar-day">{b['day']}</div>
-          <div class="bar-date">{b['date']}</div>
-          <div class="bar-prior">vs {fmt_money(b['v_last'])} LY</div>
+          <div class="mix-legend">{legend_rows}</div>
         </div>
-        """
-        for i, b in enumerate(bars)
-    ])
-    chart_total = sum(b["v_this"] for b in bars)
-    chart_avg = chart_total / len(bars) if bars else 0
-    daily_chart_html = f"""
-      <div class="daily-chart-card">
-        <div class="chart-header">
-          <div>
-            <div class="chart-title">Daily Sales Breakdown</div>
-            <div class="chart-sub">Best day: <strong>{bars[best_day_idx]['day']} {bars[best_day_idx]['date']}</strong> at {fmt_money(bars[best_day_idx]['v_this'])} · 7-day avg {fmt_money(chart_avg)}</div>
-          </div>
-          <div class="chart-legend">
-            <span class="legend-item"><span class="legend-swatch"></span>This week</span>
-            <span class="legend-item"><span class="legend-dot legend-up"></span>vs same day LY</span>
-          </div>
-        </div>
-        <div class="chart-bars">{chart_bars_html}</div>
       </div>
     """
 
@@ -652,9 +670,9 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     font-style: italic;
   }}
 
-  /* Daily Sales Chart */
-  .daily-chart-card {{
-    padding: 28px 28px 24px;
+  /* Revenue Mix donut */
+  .mix-card {{
+    padding: 32px;
     border-radius: 24px;
     background: var(--card-bg);
     border: 1px solid var(--card-border);
@@ -662,145 +680,121 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     overflow: hidden;
     position: relative;
   }}
-  .daily-chart-card::after {{
+  .mix-card::after {{
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #7c5cff, #ff5470, #16d39a);
+    background: linear-gradient(90deg, #ff8a3d 0%, #16d39a 33%, #ff5470 66%, #7c5cff 100%);
   }}
-  .chart-header {{
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
-    flex-wrap: wrap;
-    margin-bottom: 24px;
-  }}
-  .chart-title {{
+  .mix-header {{ margin-bottom: 24px; }}
+  .mix-title {{
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 700;
     font-size: 20px;
   }}
-  .chart-sub {{
-    color: var(--fg-dim);
-    font-size: 13px;
-    margin-top: 4px;
-  }}
-  .chart-sub strong {{ color: var(--fg); }}
-  .chart-legend {{
-    display: flex;
-    gap: 16px;
-    font-size: 12px;
-    color: var(--fg-dim);
-  }}
-  .legend-item {{ display: inline-flex; align-items: center; gap: 6px; }}
-  .legend-swatch {{
-    display: inline-block; width: 12px; height: 12px;
-    border-radius: 3px;
-    background: linear-gradient(180deg, #7c5cff 0%, #5a3fd6 100%);
-  }}
-  .legend-dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; }}
-  .legend-up {{ background: var(--green); }}
-  .chart-bars {{
+  .mix-sub {{ color: var(--fg-dim); font-size: 13px; margin-top: 4px; }}
+  .mix-body {{
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 12px;
-    align-items: end;
-    height: 280px;
-    margin-bottom: 8px;
-  }}
-  .bar-col {{
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: 260px 1fr;
+    gap: 36px;
     align-items: center;
-    height: 100%;
-    text-align: center;
   }}
-  .bar-amount {{
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 6px;
-    color: var(--fg);
-    height: 18px;
+  @media (max-width: 720px) {{
+    .mix-body {{ grid-template-columns: 1fr; }}
+    .donut-wrap {{ margin: 0 auto; }}
   }}
-  .bar-col.best .bar-amount {{
-    color: var(--green);
-    font-weight: 700;
+  .donut-wrap {{
+    position: relative;
+    width: 260px;
+    height: 260px;
   }}
-  .bar-col.best .bar-amount::after {{
-    content: '  ★';
-    color: var(--green);
-  }}
-  .bar-wrap {{
-    flex: 1;
+  .donut {{
     width: 100%;
-    display: flex;
-    align-items: end;
-    justify-content: center;
-    position: relative;
+    height: 100%;
+    transform: rotate(0deg);
+    filter: drop-shadow(0 6px 24px rgba(0,0,0,0.35));
   }}
-  .bar {{
-    width: 75%;
-    min-height: 4px;
-    border-radius: 8px 8px 2px 2px;
-    background: linear-gradient(180deg, #7c5cff 0%, #5a3fd6 100%);
-    position: relative;
-    transition: transform .2s ease, filter .2s ease;
-    animation: barGrow 1.1s cubic-bezier(.2,.7,.2,1) backwards;
-    cursor: default;
+  .donut-slice {{
+    transform-origin: 50% 50%;
+    animation: sliceIn 1s cubic-bezier(.2,.7,.2,1) backwards;
+    transition: filter .2s ease, transform .2s ease;
   }}
-  .bar-col:nth-child(1) .bar {{ animation-delay: .05s; }}
-  .bar-col:nth-child(2) .bar {{ animation-delay: .12s; }}
-  .bar-col:nth-child(3) .bar {{ animation-delay: .19s; }}
-  .bar-col:nth-child(4) .bar {{ animation-delay: .26s; }}
-  .bar-col:nth-child(5) .bar {{ animation-delay: .33s; }}
-  .bar-col:nth-child(6) .bar {{ animation-delay: .40s; }}
-  .bar-col:nth-child(7) .bar {{ animation-delay: .47s; }}
-  .bar-col.best .bar {{
-    background: linear-gradient(180deg, #16d39a 0%, #0fa37b 100%);
-    box-shadow: 0 0 32px rgba(22, 211, 154, 0.45);
+  .donut-slice:hover {{
+    filter: brightness(1.15);
   }}
-  .bar:hover {{
-    transform: translateY(-2px);
-    filter: brightness(1.12);
+  @keyframes sliceIn {{
+    from {{ opacity: 0; stroke-width: 0; }}
+    to   {{ opacity: 1; stroke-width: 14; }}
   }}
-  .bar-delta {{
+  .donut-center {{
     position: absolute;
-    top: -22px;
-    left: 50%;
-    transform: translateX(-50%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+  }}
+  .donut-total-label {{
     font-family: 'Space Grotesk', sans-serif;
     font-size: 11px;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
-    white-space: nowrap;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
   }}
-  .bar-delta-up {{ background: rgba(22,211,154,0.18); color: var(--green); }}
-  .bar-delta-down {{ background: rgba(255,84,112,0.18); color: var(--red); }}
-  .bar-delta-flat {{ background: rgba(255,255,255,0.10); color: var(--fg-dim); }}
-  .bar-day {{
-    margin-top: 8px;
+  .donut-total {{
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 30px;
+    letter-spacing: -0.02em;
+    margin-top: 4px;
+  }}
+  .mix-legend {{ display: flex; flex-direction: column; gap: 12px; }}
+  .legend-row {{
+    display: grid;
+    grid-template-columns: 14px 1fr auto 64px;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    transition: transform .15s ease, background .15s ease;
+  }}
+  .legend-row:hover {{
+    transform: translateX(2px);
+    background: rgba(255,255,255,0.07);
+  }}
+  .legend-sw {{
+    width: 14px; height: 14px;
+    border-radius: 4px;
+  }}
+  .legend-label {{
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+  }}
+  .legend-val {{
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 600;
     font-size: 14px;
     color: var(--fg);
   }}
-  .bar-date {{
+  .legend-pct {{
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    text-align: right;
+    color: var(--fg-dim);
+  }}
+
+  /* Manual entry cards (Google Reviews, Employee Count) */
+  .manual-tag {{
+    margin-top: 12px;
     font-size: 11px;
     color: var(--fg-dim);
-    margin-top: 1px;
-  }}
-  .bar-prior {{
-    font-size: 11px;
-    color: var(--fg-dim);
-    opacity: 0.7;
-    margin-top: 4px;
-  }}
-  @keyframes barGrow {{
-    from {{ height: 0; opacity: 0; }}
+    font-style: italic;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }}
 
   /* Attendance card details */
@@ -909,11 +903,14 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
   <h2 class="section-title">Labor <span class="badge">% of revenue · lower is better</span></h2>
   <div class="grid grid-3">{labor_html}</div>
 
-  <h2 class="section-title">Daily Sales Breakdown <span class="badge">{label} · day-by-day</span></h2>
-  {daily_chart_html}
+  <h2 class="section-title">Revenue Mix <span class="badge">share of total sales</span></h2>
+  {mix_chart_html}
 
-  <h2 class="section-title">Staff Attendance <span class="badge">7Shifts · this fiscal week</span></h2>
-  <div class="grid grid-3">{attendance_card_html}</div>
+  <h2 class="section-title">Team <span class="badge">attendance · headcount · reviews</span></h2>
+  <div class="grid grid-3">
+    {attendance_card_html}
+    {manual_html}
+  </div>
 
   <h2 class="section-title">Operational Metrics <span class="badge">data wiring in progress</span></h2>
   <div class="grid grid-6">{pending_html}</div>
