@@ -223,8 +223,8 @@ def delta(curr, prior, currency=False):
 def build_html(label, this_start, this_end, this_year, last_start, last_end, last_year):
     """label: e.g. 'P5W4'. *_start/*_end are ISO dates. *_year is a computed dict."""
 
-    # ---- sales cards ----
-    def sales_card(title, this_val, last_val, accent):
+    # ---- sales cards (YoY — green if up vs last year, red if down) ----
+    def sales_card(title, this_val, last_val):
         d_str, direction, pct = delta(this_val, last_val, currency=True)
         arrow = "▲" if direction == "up" else ("▼" if direction == "down" else "■")
         chip_class = (
@@ -232,8 +232,13 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
             else "delta-down" if direction == "down"
             else "delta-flat"
         )
+        status_class = (
+            "is-hit"  if direction == "up"
+            else "is-miss" if direction == "down"
+            else ""
+        )
         return f"""
-        <div class="card sales-card" style="--accent: {accent}">
+        <div class="card sales-card {status_class}">
           <div class="card-title">{title}</div>
           <div class="card-value">{fmt_money(this_val)}</div>
           <div class="card-prior">vs {fmt_money(last_val)} ({last_year['_label']})</div>
@@ -241,8 +246,8 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         </div>
         """
 
-    # ---- labor cards (with target bars) ----
-    def labor_card(title, this_val, last_val, target, accent):
+    # ---- labor cards (target-tracked — green if ≤ target, red if over) ----
+    def labor_card(title, this_val, last_val, target):
         # better = lower (% of revenue)
         d_str, direction, _ = delta(this_val, last_val)
         # for labor, "up" (cost rose) is bad, "down" is good — flip arrow color
@@ -251,11 +256,12 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         hit_target = this_val <= target
         target_class = "target-hit" if hit_target else "target-miss"
         target_label = "ON TARGET" if hit_target else "OVER TARGET"
+        status_class = "is-hit" if hit_target else "is-miss"
         # bar fill: scale so target = 100% width
         bar_pct = min((this_val / target) * 100, 175) if target > 0 else 0
-        bar_color = "linear-gradient(90deg, #16d39a, #16d39a)" if hit_target else "linear-gradient(90deg, #ff8a3d, #ff5470)"
+        bar_color = "linear-gradient(90deg, #1cd97b, #1cd97b)" if hit_target else "linear-gradient(90deg, #ff8a3d, #ff3b5c)"
         return f"""
-        <div class="card labor-card" style="--accent: {accent}">
+        <div class="card labor-card {status_class}">
           <div class="card-title">{title}</div>
           <div class="card-value">{fmt_pct(this_val)}</div>
           <div class="card-prior">vs {fmt_pct(last_val)} ({last_year['_label']}) · target ≤ {fmt_pct(target)}</div>
@@ -271,23 +277,23 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         """
 
     sales_html = "".join([
-        sales_card("Total Sales",         this_year["total_sales"], last_year["total_sales"], "#7c5cff"),
-        sales_card("Food Sales",          this_year["food_sales"],  last_year["food_sales"],  "#ff8a3d"),
-        sales_card("Beverage Sales",      this_year["bev_sales"],   last_year["bev_sales"],   "#16d39a"),
-        sales_card("Entertainment Sales", this_year["ent_sales"],   last_year["ent_sales"],   "#ff5470"),
+        sales_card("Total Sales",         this_year["total_sales"], last_year["total_sales"]),
+        sales_card("Food Sales",          this_year["food_sales"],  last_year["food_sales"]),
+        sales_card("Beverage Sales",      this_year["bev_sales"],   last_year["bev_sales"]),
+        sales_card("Entertainment Sales", this_year["ent_sales"],   last_year["ent_sales"]),
     ])
 
     labor_html = "".join([
-        labor_card("Total Labor %",   this_year["total_labor_pct"], last_year["total_labor_pct"], 15.0, "#7c5cff"),
-        labor_card("Kitchen Labor %", this_year["kit_labor_pct"],   last_year["kit_labor_pct"],   20.0, "#ff8a3d"),
-        labor_card("FOH Labor %",     this_year["foh_labor_pct"],   last_year["foh_labor_pct"],   10.0, "#16d39a"),
+        labor_card("Total Labor %",   this_year["total_labor_pct"], last_year["total_labor_pct"], 15.0),
+        labor_card("Kitchen Labor %", this_year["kit_labor_pct"],   last_year["kit_labor_pct"],   20.0),
+        labor_card("FOH Labor %",     this_year["foh_labor_pct"],   last_year["foh_labor_pct"],   10.0),
     ])
 
-    # Manually-entered cards (will be wired to feeds later)
+    # Manually-entered cards — neutral (these aren't pass/fail metrics)
     manual_html = ""
     if MANUAL.get("employee_count") is not None:
         manual_html += f"""
-        <div class="card manual-card" style="--accent: #7c5cff">
+        <div class="card manual-card is-neutral">
           <div class="card-title">Employee Count</div>
           <div class="card-value">{MANUAL['employee_count']}</div>
           <div class="card-prior">active staff this week</div>
@@ -296,7 +302,7 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         """
     if MANUAL.get("google_reviews") is not None:
         manual_html += f"""
-        <div class="card manual-card" style="--accent: #16d39a">
+        <div class="card manual-card is-neutral">
           <div class="card-title">Google Reviews</div>
           <div class="card-value">{MANUAL['google_reviews']}</div>
           <div class="card-prior">new reviews this week</div>
@@ -305,16 +311,17 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         """
 
     # ---- Cost-of-Sales cards (manual for now, lower = better, target-tracked) ----
-    def cost_card(title, value, target, accent):
+    def cost_card(title, value, target):
         hit_target = value <= target
         target_class = "target-hit" if hit_target else "target-miss"
         target_label = "ON TARGET" if hit_target else "OVER TARGET"
+        status_class = "is-hit" if hit_target else "is-miss"
         bar_pct = min((value / target) * 100, 175) if target > 0 else 0
-        bar_color = ("linear-gradient(90deg, #16d39a, #16d39a)"
+        bar_color = ("linear-gradient(90deg, #1cd97b, #1cd97b)"
                      if hit_target
-                     else "linear-gradient(90deg, #ff8a3d, #ff5470)")
+                     else "linear-gradient(90deg, #ff8a3d, #ff3b5c)")
         return f"""
-        <div class="card cost-card" style="--accent: {accent}">
+        <div class="card cost-card {status_class}">
           <div class="card-title">{title}</div>
           <div class="card-value">{value:.2f}%</div>
           <div class="card-prior">target ≤ {target:.2f}%</div>
@@ -331,11 +338,11 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
 
     cost_cards = []
     if MANUAL.get("food_cos_pct") is not None:
-        cost_cards.append(cost_card("Food COS %",     MANUAL["food_cos_pct"],     30.0, "#ff8a3d"))
+        cost_cards.append(cost_card("Food COS %",     MANUAL["food_cos_pct"],     30.0))
     if MANUAL.get("bev_cos_pct") is not None:
-        cost_cards.append(cost_card("Beverage COS %", MANUAL["bev_cos_pct"],      20.0, "#16d39a"))
+        cost_cards.append(cost_card("Beverage COS %", MANUAL["bev_cos_pct"],      20.0))
     if MANUAL.get("voids_comps_pct") is not None:
-        cost_cards.append(cost_card("Voids & Comps",  MANUAL["voids_comps_pct"],   1.0, "#ff5470"))
+        cost_cards.append(cost_card("Voids & Comps",  MANUAL["voids_comps_pct"],   1.0))
     cost_html = "".join(cost_cards)
 
     # bottom: placeholders for the rows we don't yet have a data source for
@@ -359,6 +366,7 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     att_target_hit = att_total == 0
     att_target_class = "target-hit" if att_target_hit else "target-miss"
     att_target_label = "ON TARGET" if att_target_hit else "OVER TARGET"
+    att_status_class = "is-hit" if att_target_hit else "is-miss"
     att_value_color = "var(--green)" if att_target_hit else "var(--red)"
     def _incident_li(i):
         kind_slug = i["kind"].lower().replace("-", "").replace(" ", "")
@@ -370,7 +378,7 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     att_incidents_html = "".join(_incident_li(i) for i in att["incidents"]) or \
         '<li class="att-empty">No incidents this week.</li>'
     attendance_card_html = f"""
-        <div class="card attendance-card" style="--accent: #ff5470">
+        <div class="card attendance-card {att_status_class}">
           <div class="card-title">Staff Attendance Issues</div>
           <div class="card-value" style="color: {att_value_color};">{att_total}</div>
           <div class="card-prior">{att['late']} late · {att['no_show']} no-show · {att['called_off']} called off · target 0</div>
@@ -467,18 +475,22 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {{
-    --bg-1: #0b0820;
-    --bg-2: #1a0f3a;
-    --bg-3: #2d1b5e;
-    --fg: #f3f0ff;
-    --fg-dim: #b8a8e0;
-    --card-bg: rgba(255,255,255,0.06);
-    --card-border: rgba(255,255,255,0.10);
-    --green: #16d39a;
-    --red: #ff5470;
+    --bg-1: #07101c;
+    --bg-2: #0a1626;
+    --bg-3: #0f1d33;
+    --fg: #f1f4f8;
+    --fg-dim: #8ea0b8;
+    --card-bg: rgba(255,255,255,0.045);
+    --card-border: rgba(255,255,255,0.09);
+    --green: #1cd97b;
+    --green-soft: rgba(28, 217, 123, 0.18);
+    --green-glow: rgba(28, 217, 123, 0.35);
+    --red: #ff3b5c;
+    --red-soft: rgba(255, 59, 92, 0.18);
+    --red-glow: rgba(255, 59, 92, 0.35);
     --orange: #ff8a3d;
     --purple: #7c5cff;
-    --pink: #ff5470;
+    --neutral: #5c6b80;
   }}
   * {{ box-sizing: border-box; }}
   html, body {{ margin: 0; padding: 0; }}
@@ -487,9 +499,8 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     color: var(--fg);
     background: var(--bg-1);
     background-image:
-      radial-gradient(circle at 10% 0%, rgba(124, 92, 255, 0.35), transparent 40%),
-      radial-gradient(circle at 90% 0%, rgba(255, 84, 112, 0.25), transparent 40%),
-      radial-gradient(circle at 50% 100%, rgba(22, 211, 154, 0.20), transparent 50%),
+      radial-gradient(circle at 12% -10%, rgba(28, 217, 123, 0.10), transparent 50%),
+      radial-gradient(circle at 88% -10%, rgba(255, 59, 92, 0.10), transparent 50%),
       linear-gradient(180deg, var(--bg-1), var(--bg-2));
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
@@ -523,10 +534,7 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     font-size: clamp(40px, 6vw, 72px);
     margin: 18px 0 12px;
     letter-spacing: -0.02em;
-    background: linear-gradient(135deg, #fff 0%, #c0a8ff 50%, #ff8fb0 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #fff;
     line-height: 1.05;
   }}
   .hero-sub {{
@@ -538,13 +546,17 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     margin-top: 28px;
     display: inline-flex;
     align-items: center;
-    gap: 14px;
-    padding: 14px 28px;
-    background: rgba(255,255,255,0.06);
+    gap: 16px;
+    padding: 16px 32px;
+    background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.10);
     border-radius: 999px;
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 500;
+  }}
+  .hero-headline .stat {{
+    font-size: 22px;
+    padding: 2px 4px;
   }}
   .hero-headline .stat {{
     font-weight: 700;
@@ -582,7 +594,7 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
   .grid-6 {{ grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }}
 
   .card {{
-    --accent: var(--purple);
+    --accent: var(--neutral);
     position: relative;
     padding: 24px;
     border-radius: 20px;
@@ -599,23 +611,38 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, var(--accent) 0%, transparent 60%);
-    opacity: 0.08;
+    background: linear-gradient(135deg, var(--accent) 0%, transparent 55%);
+    opacity: 0.10;
     pointer-events: none;
   }}
   .card::after {{
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 3px;
+    height: 5px;
     background: var(--accent);
-    opacity: 0.85;
+    opacity: 0.95;
   }}
   .card:hover {{
     transform: translateY(-3px);
     border-color: rgba(255,255,255,0.20);
     box-shadow: 0 18px 40px -18px rgba(0,0,0,0.6);
   }}
+  /* Strong status variants — applied via card class */
+  .card.is-hit  {{
+    --accent: var(--green);
+    border-color: rgba(28, 217, 123, 0.30);
+    box-shadow: 0 0 0 1px rgba(28, 217, 123, 0.12) inset;
+  }}
+  .card.is-miss {{
+    --accent: var(--red);
+    border-color: rgba(255, 59, 92, 0.30);
+    box-shadow: 0 0 0 1px rgba(255, 59, 92, 0.12) inset;
+  }}
+  .card.is-neutral {{
+    --accent: var(--neutral);
+  }}
+  .card.is-neutral::after {{ height: 3px; opacity: 0.55; }}
   .card-title {{
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 600;
@@ -653,8 +680,8 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     border-radius: 8px;
     font-family: 'Space Grotesk', sans-serif;
   }}
-  .delta-up   {{ background: rgba(22,211,154,0.14); color: var(--green); }}
-  .delta-down {{ background: rgba(255,84,112,0.14); color: var(--red); }}
+  .delta-up   {{ background: var(--green-soft); color: var(--green); }}
+  .delta-down {{ background: var(--red-soft);   color: var(--red); }}
   .delta-flat {{ background: rgba(255,255,255,0.08); color: var(--fg-dim); }}
 
   .labor-bar {{
@@ -683,15 +710,25 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     transform: translateX(-1px);
   }}
   .target-pill {{
-    padding: 3px 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    margin-right: 4px;
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.10em;
+    margin-right: 6px;
+    text-transform: uppercase;
   }}
-  .target-hit  {{ background: rgba(22,211,154,0.18); color: var(--green); }}
-  .target-miss {{ background: rgba(255,84,112,0.18); color: var(--red); }}
+  .target-hit  {{
+    background: var(--green-soft);
+    color: var(--green);
+    box-shadow: 0 0 0 1px rgba(28, 217, 123, 0.35) inset;
+  }}
+  .target-miss {{
+    background: var(--red-soft);
+    color: var(--red);
+    box-shadow: 0 0 0 1px rgba(255, 59, 92, 0.35) inset;
+  }}
 
   .pending-card {{
     opacity: 0.78;
@@ -718,7 +755,8 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #ff8a3d 0%, #16d39a 33%, #ff5470 66%, #7c5cff 100%);
+    background: linear-gradient(90deg, var(--green) 0%, var(--red) 100%);
+    opacity: 0.65;
   }}
   .mix-header {{ margin-bottom: 24px; }}
   .mix-title {{

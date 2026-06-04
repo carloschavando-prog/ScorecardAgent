@@ -9,18 +9,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg-1: #0b0820;
-    --bg-2: #1a0f3a;
-    --bg-3: #2d1b5e;
-    --fg: #f3f0ff;
-    --fg-dim: #b8a8e0;
-    --card-bg: rgba(255,255,255,0.06);
-    --card-border: rgba(255,255,255,0.10);
-    --green: #16d39a;
-    --red: #ff5470;
+    --bg-1: #07101c;
+    --bg-2: #0a1626;
+    --bg-3: #0f1d33;
+    --fg: #f1f4f8;
+    --fg-dim: #8ea0b8;
+    --card-bg: rgba(255,255,255,0.045);
+    --card-border: rgba(255,255,255,0.09);
+    --green: #1cd97b;
+    --green-soft: rgba(28, 217, 123, 0.18);
+    --green-glow: rgba(28, 217, 123, 0.35);
+    --red: #ff3b5c;
+    --red-soft: rgba(255, 59, 92, 0.18);
+    --red-glow: rgba(255, 59, 92, 0.35);
     --orange: #ff8a3d;
     --purple: #7c5cff;
-    --pink: #ff5470;
+    --neutral: #5c6b80;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -29,9 +33,8 @@
     color: var(--fg);
     background: var(--bg-1);
     background-image:
-      radial-gradient(circle at 10% 0%, rgba(124, 92, 255, 0.35), transparent 40%),
-      radial-gradient(circle at 90% 0%, rgba(255, 84, 112, 0.25), transparent 40%),
-      radial-gradient(circle at 50% 100%, rgba(22, 211, 154, 0.20), transparent 50%),
+      radial-gradient(circle at 12% -10%, rgba(28, 217, 123, 0.10), transparent 50%),
+      radial-gradient(circle at 88% -10%, rgba(255, 59, 92, 0.10), transparent 50%),
       linear-gradient(180deg, var(--bg-1), var(--bg-2));
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
@@ -65,10 +68,7 @@
     font-size: clamp(40px, 6vw, 72px);
     margin: 18px 0 12px;
     letter-spacing: -0.02em;
-    background: linear-gradient(135deg, #fff 0%, #c0a8ff 50%, #ff8fb0 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #fff;
     line-height: 1.05;
   }
   .hero-sub {
@@ -80,13 +80,17 @@
     margin-top: 28px;
     display: inline-flex;
     align-items: center;
-    gap: 14px;
-    padding: 14px 28px;
-    background: rgba(255,255,255,0.06);
+    gap: 16px;
+    padding: 16px 32px;
+    background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.10);
     border-radius: 999px;
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 500;
+  }
+  .hero-headline .stat {
+    font-size: 22px;
+    padding: 2px 4px;
   }
   .hero-headline .stat {
     font-weight: 700;
@@ -124,7 +128,7 @@
   .grid-6 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 
   .card {
-    --accent: var(--purple);
+    --accent: var(--neutral);
     position: relative;
     padding: 24px;
     border-radius: 20px;
@@ -141,23 +145,38 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, var(--accent) 0%, transparent 60%);
-    opacity: 0.08;
+    background: linear-gradient(135deg, var(--accent) 0%, transparent 55%);
+    opacity: 0.10;
     pointer-events: none;
   }
   .card::after {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 3px;
+    height: 5px;
     background: var(--accent);
-    opacity: 0.85;
+    opacity: 0.95;
   }
   .card:hover {
     transform: translateY(-3px);
     border-color: rgba(255,255,255,0.20);
     box-shadow: 0 18px 40px -18px rgba(0,0,0,0.6);
   }
+  /* Strong status variants — applied via card class */
+  .card.is-hit  {
+    --accent: var(--green);
+    border-color: rgba(28, 217, 123, 0.30);
+    box-shadow: 0 0 0 1px rgba(28, 217, 123, 0.12) inset;
+  }
+  .card.is-miss {
+    --accent: var(--red);
+    border-color: rgba(255, 59, 92, 0.30);
+    box-shadow: 0 0 0 1px rgba(255, 59, 92, 0.12) inset;
+  }
+  .card.is-neutral {
+    --accent: var(--neutral);
+  }
+  .card.is-neutral::after { height: 3px; opacity: 0.55; }
   .card-title {
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 600;
@@ -195,8 +214,8 @@
     border-radius: 8px;
     font-family: 'Space Grotesk', sans-serif;
   }
-  .delta-up   { background: rgba(22,211,154,0.14); color: var(--green); }
-  .delta-down { background: rgba(255,84,112,0.14); color: var(--red); }
+  .delta-up   { background: var(--green-soft); color: var(--green); }
+  .delta-down { background: var(--red-soft);   color: var(--red); }
   .delta-flat { background: rgba(255,255,255,0.08); color: var(--fg-dim); }
 
   .labor-bar {
@@ -225,15 +244,25 @@
     transform: translateX(-1px);
   }
   .target-pill {
-    padding: 3px 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    margin-right: 4px;
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.10em;
+    margin-right: 6px;
+    text-transform: uppercase;
   }
-  .target-hit  { background: rgba(22,211,154,0.18); color: var(--green); }
-  .target-miss { background: rgba(255,84,112,0.18); color: var(--red); }
+  .target-hit  {
+    background: var(--green-soft);
+    color: var(--green);
+    box-shadow: 0 0 0 1px rgba(28, 217, 123, 0.35) inset;
+  }
+  .target-miss {
+    background: var(--red-soft);
+    color: var(--red);
+    box-shadow: 0 0 0 1px rgba(255, 59, 92, 0.35) inset;
+  }
 
   .pending-card {
     opacity: 0.78;
@@ -260,7 +289,8 @@
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #ff8a3d 0%, #16d39a 33%, #ff5470 66%, #7c5cff 100%);
+    background: linear-gradient(90deg, var(--green) 0%, var(--red) 100%);
+    opacity: 0.65;
   }
   .mix-header { margin-bottom: 24px; }
   .mix-title {
@@ -483,28 +513,28 @@
 
   <h2 class="section-title">Sales <span class="badge">vs same week last year</span></h2>
   <div class="grid grid-4">
-        <div class="card sales-card" style="--accent: #7c5cff">
+        <div class="card sales-card is-miss">
           <div class="card-title">Total Sales</div>
           <div class="card-value">$68,359</div>
           <div class="card-prior">vs $70,637 (2025)</div>
           <div class="card-delta delta-down">▼ −$2,278 &nbsp;·&nbsp; -3.2%</div>
         </div>
         
-        <div class="card sales-card" style="--accent: #ff8a3d">
+        <div class="card sales-card is-hit">
           <div class="card-title">Food Sales</div>
           <div class="card-value">$22,814</div>
           <div class="card-prior">vs $22,036 (2025)</div>
           <div class="card-delta delta-up">▲ +$779 &nbsp;·&nbsp; +3.5%</div>
         </div>
         
-        <div class="card sales-card" style="--accent: #16d39a">
+        <div class="card sales-card is-miss">
           <div class="card-title">Beverage Sales</div>
           <div class="card-value">$16,966</div>
           <div class="card-prior">vs $21,897 (2025)</div>
           <div class="card-delta delta-down">▼ −$4,931 &nbsp;·&nbsp; -22.5%</div>
         </div>
         
-        <div class="card sales-card" style="--accent: #ff5470">
+        <div class="card sales-card is-hit">
           <div class="card-title">Entertainment Sales</div>
           <div class="card-value">$25,526</div>
           <div class="card-prior">vs $23,386 (2025)</div>
@@ -514,12 +544,12 @@
 
   <h2 class="section-title">Labor <span class="badge">% of revenue · lower is better</span></h2>
   <div class="grid grid-3">
-        <div class="card labor-card" style="--accent: #7c5cff">
+        <div class="card labor-card is-miss">
           <div class="card-title">Total Labor %</div>
           <div class="card-value">17.22%</div>
           <div class="card-prior">vs 15.84% (2025) · target ≤ 15.00%</div>
           <div class="labor-bar">
-            <div class="labor-bar-fill" style="width: 114.8%; background: linear-gradient(90deg, #ff8a3d, #ff5470);"></div>
+            <div class="labor-bar-fill" style="width: 114.8%; background: linear-gradient(90deg, #ff8a3d, #ff3b5c);"></div>
             <div class="labor-bar-target" style="left: 100%;"></div>
           </div>
           <div class="card-delta delta-down">
@@ -528,12 +558,12 @@
           </div>
         </div>
         
-        <div class="card labor-card" style="--accent: #ff8a3d">
+        <div class="card labor-card is-miss">
           <div class="card-title">Kitchen Labor %</div>
           <div class="card-value">25.33%</div>
           <div class="card-prior">vs 24.97% (2025) · target ≤ 20.00%</div>
           <div class="labor-bar">
-            <div class="labor-bar-fill" style="width: 126.6%; background: linear-gradient(90deg, #ff8a3d, #ff5470);"></div>
+            <div class="labor-bar-fill" style="width: 126.6%; background: linear-gradient(90deg, #ff8a3d, #ff3b5c);"></div>
             <div class="labor-bar-target" style="left: 100%;"></div>
           </div>
           <div class="card-delta delta-down">
@@ -542,12 +572,12 @@
           </div>
         </div>
         
-        <div class="card labor-card" style="--accent: #16d39a">
+        <div class="card labor-card is-miss">
           <div class="card-title">FOH Labor %</div>
           <div class="card-value">13.16%</div>
           <div class="card-prior">vs 11.70% (2025) · target ≤ 10.00%</div>
           <div class="labor-bar">
-            <div class="labor-bar-fill" style="width: 131.6%; background: linear-gradient(90deg, #ff8a3d, #ff5470);"></div>
+            <div class="labor-bar-fill" style="width: 131.6%; background: linear-gradient(90deg, #ff8a3d, #ff3b5c);"></div>
             <div class="labor-bar-target" style="left: 100%;"></div>
           </div>
           <div class="card-delta delta-down">
@@ -559,12 +589,12 @@
 
   <h2 class="section-title">Cost of Sales <span class="badge">lower is better</span></h2>
   <div class="grid grid-3">
-        <div class="card cost-card" style="--accent: #ff8a3d">
+        <div class="card cost-card is-hit">
           <div class="card-title">Food COS %</div>
           <div class="card-value">28.07%</div>
           <div class="card-prior">target ≤ 30.00%</div>
           <div class="labor-bar">
-            <div class="labor-bar-fill" style="width: 93.6%; background: linear-gradient(90deg, #16d39a, #16d39a);"></div>
+            <div class="labor-bar-fill" style="width: 93.6%; background: linear-gradient(90deg, #1cd97b, #1cd97b);"></div>
             <div class="labor-bar-target" style="left: 100%;"></div>
           </div>
           <div class="card-delta">
@@ -573,12 +603,12 @@
           </div>
         </div>
         
-        <div class="card cost-card" style="--accent: #16d39a">
+        <div class="card cost-card is-hit">
           <div class="card-title">Beverage COS %</div>
           <div class="card-value">7.57%</div>
           <div class="card-prior">target ≤ 20.00%</div>
           <div class="labor-bar">
-            <div class="labor-bar-fill" style="width: 37.9%; background: linear-gradient(90deg, #16d39a, #16d39a);"></div>
+            <div class="labor-bar-fill" style="width: 37.9%; background: linear-gradient(90deg, #1cd97b, #1cd97b);"></div>
             <div class="labor-bar-target" style="left: 100%;"></div>
           </div>
           <div class="card-delta">
@@ -587,12 +617,12 @@
           </div>
         </div>
         
-        <div class="card cost-card" style="--accent: #ff5470">
+        <div class="card cost-card is-hit">
           <div class="card-title">Voids & Comps</div>
           <div class="card-value">0.22%</div>
           <div class="card-prior">target ≤ 1.00%</div>
           <div class="labor-bar">
-            <div class="labor-bar-fill" style="width: 22.0%; background: linear-gradient(90deg, #16d39a, #16d39a);"></div>
+            <div class="labor-bar-fill" style="width: 22.0%; background: linear-gradient(90deg, #1cd97b, #1cd97b);"></div>
             <div class="labor-bar-target" style="left: 100%;"></div>
           </div>
           <div class="card-delta">
@@ -630,7 +660,7 @@
   <h2 class="section-title">Team <span class="badge">attendance · headcount · reviews</span></h2>
   <div class="grid grid-3">
     
-        <div class="card attendance-card" style="--accent: #ff5470">
+        <div class="card attendance-card is-miss">
           <div class="card-title">Staff Attendance Issues</div>
           <div class="card-value" style="color: var(--red);">4</div>
           <div class="card-prior">1 late · 3 no-show · 0 called off · target 0</div>
@@ -644,14 +674,14 @@
         </div>
     
     
-        <div class="card manual-card" style="--accent: #7c5cff">
+        <div class="card manual-card is-neutral">
           <div class="card-title">Employee Count</div>
           <div class="card-value">32</div>
           <div class="card-prior">active staff this week</div>
           <div class="manual-tag">entered manually</div>
         </div>
         
-        <div class="card manual-card" style="--accent: #16d39a">
+        <div class="card manual-card is-neutral">
           <div class="card-title">Google Reviews</div>
           <div class="card-value">25</div>
           <div class="card-prior">new reviews this week</div>
