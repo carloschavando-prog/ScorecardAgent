@@ -289,24 +289,30 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         labor_card("FOH Labor %",     this_year["foh_labor_pct"],   last_year["foh_labor_pct"],   10.0),
     ])
 
-    # Manually-entered cards — neutral (these aren't pass/fail metrics)
+    # Manually-entered cards — Employee Count = hit, Google Reviews = miss for P5W4
     manual_html = ""
     if MANUAL.get("employee_count") is not None:
         manual_html += f"""
-        <div class="card manual-card is-neutral">
+        <div class="card manual-card is-hit">
           <div class="card-title">Employee Count</div>
           <div class="card-value">{MANUAL['employee_count']}</div>
           <div class="card-prior">active staff this week</div>
-          <div class="manual-tag">entered manually</div>
+          <div class="card-delta">
+            <span class="target-pill target-hit">ON TARGET</span>
+            <span class="manual-inline">manual</span>
+          </div>
         </div>
         """
     if MANUAL.get("google_reviews") is not None:
         manual_html += f"""
-        <div class="card manual-card is-neutral">
+        <div class="card manual-card is-miss">
           <div class="card-title">Google Reviews</div>
           <div class="card-value">{MANUAL['google_reviews']}</div>
           <div class="card-prior">new reviews this week</div>
-          <div class="manual-tag">entered manually</div>
+          <div class="card-delta">
+            <span class="target-pill target-miss">BELOW TARGET</span>
+            <span class="manual-inline">manual</span>
+          </div>
         </div>
         """
 
