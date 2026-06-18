@@ -29,6 +29,14 @@ MANUAL_BY_WEEK = {
         # Hit/miss override for non-target-tracked count metrics:
         "_status": {"employee_count": "hit", "google_reviews": "miss"},
     },
+    "P6W2": {
+        "google_reviews":    6,
+        "employee_count":   32,
+        "food_cos_pct":     28.86,
+        "bev_cos_pct":      16.90,
+        "voids_comps_pct":   0.90,
+        "_status": {"employee_count": "hit", "google_reviews": "miss"},
+    },
     # Add new weeks here as values come in from the EOS meeting prep.
 }
 
