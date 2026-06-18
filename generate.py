@@ -17,15 +17,51 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-# Manual overrides — values we don't have a feed for yet.
-# Set to None to render the card as "TBD" once automation lands.
-MANUAL = {
-    "google_reviews": 25,    # weekly count, entered by hand
-    "employee_count": 32,    # active staff at end of week
-    "food_cos_pct":   28.07, # food cost of sales (lower is better, target 30%)
-    "bev_cos_pct":     7.57, # beverage cost of sales (lower is better, target 20%)
-    "voids_comps_pct": 0.22, # voids & comps as % of net sales (lower is better, target 1%)
+# Manual overrides keyed by fiscal-week label. Each week the user supplies
+# the values the feeds don't yet cover; missing keys render as TBD cards.
+MANUAL_BY_WEEK = {
+    "P5W4": {
+        "google_reviews":   25,
+        "employee_count":   32,
+        "food_cos_pct":     28.07,
+        "bev_cos_pct":       7.57,
+        "voids_comps_pct":   0.22,
+        # Hit/miss override for non-target-tracked count metrics:
+        "_status": {"employee_count": "hit", "google_reviews": "miss"},
+    },
+    # Add new weeks here as values come in from the EOS meeting prep.
 }
+
+# Fiscal calendar — FY2026 starts Mon 2025-12-29 (52-week year).
+# Period lengths in weeks: P1, P4, P7, P10 = 5 weeks; all others = 4 weeks.
+FY2026_W1 = date(2025, 12, 29)
+PERIOD_WEEKS = [5, 4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4]
+
+
+def fiscal_label_for_week(week_start):
+    """Given a Monday that begins a fiscal week, return its 'PxWy' label."""
+    weeks_since = (week_start - FY2026_W1).days // 7
+    if weeks_since < 0 or weeks_since >= 52:
+        raise ValueError(f"{week_start} is outside FY2026")
+    cum = 0
+    for i, n in enumerate(PERIOD_WEEKS, start=1):
+        if cum + n > weeks_since:
+            return f"P{i}W{weeks_since - cum + 1}"
+        cum += n
+
+
+def last_completed_fiscal_week(today=None):
+    """Return (label, this_start, this_end, last_start, last_end) for the most
+    recently completed Mon–Sun fiscal week, with prior-year aligned by fiscal
+    week (−364 days = exactly 52 weeks, preserves day-of-week)."""
+    today = today or date.today()
+    days_since_sunday = (today.weekday() + 1) % 7  # Mon=0..Sun=6
+    last_sun = today - timedelta(days=days_since_sunday)
+    last_mon = last_sun - timedelta(days=6)
+    label = fiscal_label_for_week(last_mon)
+    ly_start = last_mon - timedelta(days=364)
+    ly_end = last_sun - timedelta(days=364)
+    return label, last_mon.isoformat(), last_sun.isoformat(), ly_start.isoformat(), ly_end.isoformat()
 
 SUPA = "https://jrzfczhsqshejnrxgmuq.supabase.co"
 KEY = (
@@ -288,32 +324,55 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         labor_card("FOH Labor %",     this_year["foh_labor_pct"],   last_year["foh_labor_pct"],   10.0),
     ])
 
-    # Manually-entered cards — Employee Count = hit, Google Reviews = miss for P5W4
+    # ---- Look up manual values for THIS week ----
+    manual = MANUAL_BY_WEEK.get(label, {})
+    status_overrides = manual.get("_status", {})
+
+    def pending_card(title, target_desc):
+        return f"""
+        <div class="card pending-card">
+          <div class="card-title">{title}</div>
+          <div class="card-value pending">TBD</div>
+          <div class="card-prior">{target_desc}</div>
+          <div class="pending-tag">awaiting manual entry</div>
+        </div>
+        """
+
+    def count_card(title, value, prior_desc, key):
+        """For Employee Count / Google Reviews — hit/miss/neutral via _status override."""
+        s = status_overrides.get(key)
+        if s == "hit":
+            status_class, pill_class, pill_label = "is-hit",  "target-hit",  "ON TARGET"
+        elif s == "miss":
+            status_class, pill_class, pill_label = "is-miss", "target-miss", "BELOW TARGET"
+        else:
+            status_class, pill_class, pill_label = "is-neutral", "", ""
+        pill_html = (f'<span class="target-pill {pill_class}">{pill_label}</span>'
+                     if pill_label else "")
+        return f"""
+        <div class="card manual-card {status_class}">
+          <div class="card-title">{title}</div>
+          <div class="card-value">{value}</div>
+          <div class="card-prior">{prior_desc}</div>
+          <div class="card-delta">
+            {pill_html}
+            <span class="manual-inline">manual</span>
+          </div>
+        </div>
+        """
+
+    # Manually-entered count cards (or TBD if missing)
     manual_html = ""
-    if MANUAL.get("employee_count") is not None:
-        manual_html += f"""
-        <div class="card manual-card is-hit">
-          <div class="card-title">Employee Count</div>
-          <div class="card-value">{MANUAL['employee_count']}</div>
-          <div class="card-prior">active staff this week</div>
-          <div class="card-delta">
-            <span class="target-pill target-hit">ON TARGET</span>
-            <span class="manual-inline">manual</span>
-          </div>
-        </div>
-        """
-    if MANUAL.get("google_reviews") is not None:
-        manual_html += f"""
-        <div class="card manual-card is-miss">
-          <div class="card-title">Google Reviews</div>
-          <div class="card-value">{MANUAL['google_reviews']}</div>
-          <div class="card-prior">new reviews this week</div>
-          <div class="card-delta">
-            <span class="target-pill target-miss">BELOW TARGET</span>
-            <span class="manual-inline">manual</span>
-          </div>
-        </div>
-        """
+    if manual.get("employee_count") is not None:
+        manual_html += count_card("Employee Count", manual["employee_count"],
+                                  "active staff this week", "employee_count")
+    else:
+        manual_html += pending_card("Employee Count", "enter active staff for this week")
+    if manual.get("google_reviews") is not None:
+        manual_html += count_card("Google Reviews", manual["google_reviews"],
+                                  "new reviews this week", "google_reviews")
+    else:
+        manual_html += pending_card("Google Reviews", "enter new review count for this week")
 
     # ---- Cost-of-Sales cards (manual for now, lower = better, target-tracked) ----
     def cost_card(title, value, target):
@@ -341,28 +400,23 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
         </div>
         """
 
+    cost_specs = [
+        ("food_cos_pct",    "Food COS %",      30.0),
+        ("bev_cos_pct",     "Beverage COS %",  20.0),
+        ("voids_comps_pct", "Voids & Comps",    1.0),
+    ]
     cost_cards = []
-    if MANUAL.get("food_cos_pct") is not None:
-        cost_cards.append(cost_card("Food COS %",     MANUAL["food_cos_pct"],     30.0))
-    if MANUAL.get("bev_cos_pct") is not None:
-        cost_cards.append(cost_card("Beverage COS %", MANUAL["bev_cos_pct"],      20.0))
-    if MANUAL.get("voids_comps_pct") is not None:
-        cost_cards.append(cost_card("Voids & Comps",  MANUAL["voids_comps_pct"],   1.0))
+    for key, title, target in cost_specs:
+        v = manual.get(key)
+        if v is None:
+            cost_cards.append(pending_card(title, f"target ≤ {target:.2f}%"))
+        else:
+            cost_cards.append(cost_card(title, v, target))
     cost_html = "".join(cost_cards)
 
-    # bottom: placeholders for the rows we don't yet have a data source for
-    pending_rows = []
-    pending_html = "".join([
-        f"""
-        <div class="card pending-card">
-          <div class="card-title">{n}</div>
-          <div class="card-value pending">TBD</div>
-          <div class="card-prior">target {t}</div>
-          <div class="pending-tag">awaiting data source</div>
-        </div>
-        """
-        for n, t in pending_rows
-    ])
+    # No bottom "Operational Metrics" section anymore — pending values surface
+    # inline within their proper sections.
+    pending_html = ""
 
     # Staff Attendance Issues — real data via AttendanceAgent core
     att = this_year.get("attendance") or {"total": 0, "late": 0, "no_show": 0,
@@ -837,13 +891,11 @@ def build_html(label, this_start, this_end, this_year, last_start, last_end, las
 def main():
     args = sys.argv[1:]
     if len(args) == 0:
-        # default: P5W4 2026 vs P5W4 2025
-        # Note: FY2025 P5W4 = May 26 – Jun 1 (per ops calendar — FY2024 was a
-        # 53-week year, so the prior-year fiscal alignment is one week later
-        # than a naive 52-week subtraction would suggest).
-        this_start, this_end = "2026-05-25", "2026-05-31"
-        last_start, last_end = "2025-05-26", "2025-06-01"
-        label = "P5W4"
+        # Default: last completed Mon-Sun fiscal week, prior-year aligned by
+        # fiscal week (-364 days = exactly 52 weeks, preserves day-of-week).
+        label, this_start, this_end, last_start, last_end = last_completed_fiscal_week()
+    elif len(args) == 1 and args[0] == "current":
+        label, this_start, this_end, last_start, last_end = last_completed_fiscal_week()
     elif len(args) >= 5:
         this_start, this_end, last_start, last_end, label = args[:5]
     else:
